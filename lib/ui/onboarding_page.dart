@@ -1,11 +1,13 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
-import '../data/game_data.dart';
+import '../core/app_log.dart';
+import '../core/format.dart';
 import '../platform/native_bridge.dart';
 import '../state/app_state.dart';
 import '../theme/app_theme.dart';
 import 'widgets/common.dart';
+import 'widgets/feedback.dart';
 
 class OnboardingPage extends StatefulWidget {
   const OnboardingPage({super.key});
@@ -66,11 +68,14 @@ class _OnboardingPageState extends State<OnboardingPage> {
     final state = AppScope.of(context);
     final url = _url.text.trim();
     if (url.isEmpty) {
-      _toast('Isi URL zip data game dulu.');
+      showToast(context, 'Isi URL zip data game dulu.');
       return;
     }
     await state.updateConfig(
-      state.config.copyWith(liteUrl: _lite ? url : state.config.liteUrl, fullUrl: _lite ? state.config.fullUrl : url),
+      state.config.copyWith(
+        liteUrl: _lite ? url : state.config.liteUrl,
+        fullUrl: _lite ? state.config.fullUrl : url,
+      ),
     );
     setState(() {
       _busy = true;
@@ -91,11 +96,20 @@ class _OnboardingPageState extends State<OnboardingPage> {
       }
       if (zipPath == null) throw StateError('unduhan tidak selesai');
       if (mounted) setState(() => _progressLabel = 'Ekstrak...');
-      await state.gameData.extract(zipPath!);
+      await state.gameData.extract(
+        zipPath!,
+        onProgress: (done, total, entry) {
+          if (!mounted) return;
+          setState(() {
+            _progress = total > 0 ? done / total : 0;
+            _progressLabel = 'Ekstrak $done/$total · $entry';
+          });
+        },
+      );
       await _init();
-      _toast('Data siap.');
+      showToast(context, 'Data siap.');
     } catch (e) {
-      _toast('Gagal: $e');
+      showToast(context, 'Gagal: $e');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -116,9 +130,9 @@ class _OnboardingPageState extends State<OnboardingPage> {
     try {
       await data.importArchive(path);
       await _init();
-      _toast('Import selesai.');
+      showToast(context, 'Import selesai.');
     } catch (e) {
-      _toast('Gagal: $e');
+      showToast(context, 'Gagal: $e');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -140,11 +154,6 @@ class _OnboardingPageState extends State<OnboardingPage> {
     await AppScope.of(context).updateConfig(
       AppScope.of(context).config.copyWith(onboardingDone: true),
     );
-  }
-
-  void _toast(String message) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
@@ -170,9 +179,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
                   const Spacer(),
                   if (_step > 1)
                     TextButton(
-                      onPressed: _busy
-                          ? null
-                          : () => setState(() => _step--),
+                      onPressed: _busy ? null : () => setState(() => _step--),
                       child: const Text('KEMBALI'),
                     ),
                 ],
@@ -356,7 +363,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
         const SizedBox(height: 8),
         Center(
           child: TextButton(
-            onPressed: () => _toast('Bisa diganti nanti di Setelan.'),
+            onPressed: () => showToast(context, 'Bisa diganti nanti di Setelan.'),
             child: const Text('ATUR PACKAGE NANTI'),
           ),
         ),
