@@ -78,7 +78,7 @@ jobs:
       - name: Build APK
         run: |
           set -o pipefail
-          flutter build apk --release 2>&1 | tee /tmp/build.log
+          flutter build apk --release --target-platform android-arm64 2>&1 | tee /tmp/build.log
 
       - name: Commit build log on failure
         if: failure()
@@ -111,7 +111,7 @@ jobs:
         with:
           tag_name: latest
           name: Latest build
-          body: APK universal dari commit ${{ github.sha }}.
+          body: APK arm64 dari commit ${{ github.sha }}.
           files: build/app/outputs/flutter-apk/*.apk
           fail_on_unmatched_files: true
           make_latest: true
