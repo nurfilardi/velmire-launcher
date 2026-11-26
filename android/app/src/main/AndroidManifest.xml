@@ -9,7 +9,7 @@
 
     <application
         android:label="Velmire Launcher"
-        android:name="${applicationName}"
+        android:name=".VelmireApp"
         android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher_round"
         android:requestLegacyExternalStorage="true">
         <activity
