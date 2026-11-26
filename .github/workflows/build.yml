@@ -45,9 +45,16 @@ jobs:
 
       - name: Ensure gradle wrapper
         run: |
+          base=https://raw.githubusercontent.com/gradle/gradle/v8.12.0
           if [ ! -f android/gradle/wrapper/gradle-wrapper.jar ]; then
-            curl -fsSL -o android/gradle/wrapper/gradle-wrapper.jar \
-              https://raw.githubusercontent.com/gradle/gradle/v8.12.0/gradle/wrapper/gradle-wrapper.jar
+            curl -fsSL -o android/gradle/wrapper/gradle-wrapper.jar $base/gradle/wrapper/gradle-wrapper.jar
+          fi
+          if [ ! -f android/gradlew ]; then
+            curl -fsSL -o android/gradlew $base/gradlew
+            chmod +x android/gradlew
+          fi
+          if [ ! -f android/gradlew.bat ]; then
+            curl -fsSL -o android/gradlew.bat $base/gradlew.bat
           fi
 
       - run: flutter pub get
