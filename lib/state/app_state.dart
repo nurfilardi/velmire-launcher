@@ -1,10 +1,12 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/widgets.dart';
 import 'package:http/http.dart' as http;
 
 import '../data/config_store.dart';
 import '../data/game_data.dart';
+import '../data/resource_manifest.dart';
 import '../data/server_repository.dart';
 import '../models/server.dart';
 
@@ -16,6 +18,11 @@ class AppState extends ChangeNotifier {
   late List<Server> manual;
   late Set<String> favorites;
   late Map<String, String> nicks;
+  final http.Client _http = http.Client();
+
+  ResourceManifest? manifest;
+  bool manifestLoading = false;
+  String? manifestError;
 
   List<Server> _api = const [];
   bool serversLoading = false;
@@ -30,6 +37,12 @@ class AppState extends ChangeNotifier {
     manual = store.manualServers();
     favorites = store.favorites();
     nicks = store.nicks();
+    final cached = store.cachedManifest();
+    if (cached != null) {
+      try {
+        manifest = ResourceManifest.parse(cached);
+      } catch (_) {}
+    }
     unawaited(refreshServers());
   }
 
@@ -49,6 +62,25 @@ class AppState extends ChangeNotifier {
       serversError = 'Gagal memuat data server. Cek koneksi.';
     } finally {
       serversLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> loadManifest({bool force = false}) async {
+    final url = config.manifestUrl.trim();
+    if (url.isEmpty) return;
+    if (manifestLoading) return;
+    manifestLoading = true;
+    manifestError = null;
+    notifyListeners();
+    try {
+      final next = await ResourceManifest.fetch(_http, url);
+      manifest = next;
+      await store.saveManifestCache(jsonEncode(next.toJson()));
+    } catch (e) {
+      manifestError = 'Gagal memuat manifest: $e';
+    } finally {
+      manifestLoading = false;
       notifyListeners();
     }
   }
@@ -109,6 +141,7 @@ class AppState extends ChangeNotifier {
   @override
   void dispose() {
     repository.dispose();
+    _http.close();
     super.dispose();
   }
 }

@@ -11,6 +11,7 @@ class AppConfig {
   final String liteUrl;
   final String fullUrl;
   final String nick;
+  final String manifestUrl;
   final bool onboardingDone;
 
   const AppConfig({
@@ -20,6 +21,7 @@ class AppConfig {
     this.liteUrl = '',
     this.fullUrl = '',
     this.nick = '',
+    this.manifestUrl = '',
     this.onboardingDone = false,
   });
 
@@ -30,37 +32,40 @@ class AppConfig {
     String? liteUrl,
     String? fullUrl,
     String? nick,
+    String? manifestUrl,
     bool? onboardingDone,
-  }) =>
-      AppConfig(
-        clientPackage: clientPackage ?? this.clientPackage,
-        clientActivity: clientActivity ?? this.clientActivity,
-        cachePath: cachePath ?? this.cachePath,
-        liteUrl: liteUrl ?? this.liteUrl,
-        fullUrl: fullUrl ?? this.fullUrl,
-        nick: nick ?? this.nick,
-        onboardingDone: onboardingDone ?? this.onboardingDone,
-      );
+  }) => AppConfig(
+    clientPackage: clientPackage ?? this.clientPackage,
+    clientActivity: clientActivity ?? this.clientActivity,
+    cachePath: cachePath ?? this.cachePath,
+    liteUrl: liteUrl ?? this.liteUrl,
+    fullUrl: fullUrl ?? this.fullUrl,
+    nick: nick ?? this.nick,
+    manifestUrl: manifestUrl ?? this.manifestUrl,
+    onboardingDone: onboardingDone ?? this.onboardingDone,
+  );
 
   Map<String, dynamic> toJson() => {
-        'clientPackage': clientPackage,
-        'clientActivity': clientActivity,
-        'cachePath': cachePath,
-        'liteUrl': liteUrl,
-        'fullUrl': fullUrl,
-        'nick': nick,
-        'onboardingDone': onboardingDone,
-      };
+    'clientPackage': clientPackage,
+    'clientActivity': clientActivity,
+    'cachePath': cachePath,
+    'liteUrl': liteUrl,
+    'fullUrl': fullUrl,
+    'nick': nick,
+    'manifestUrl': manifestUrl,
+    'onboardingDone': onboardingDone,
+  };
 
   factory AppConfig.fromJson(Map<String, dynamic> j) => AppConfig(
-        clientPackage: j['clientPackage'] ?? 'com.gta.game',
-        clientActivity: j['clientActivity'] ?? 'com.gta.game.SAMP',
-        cachePath: j['cachePath'] ?? '/storage/emulated/0/GTA',
-        liteUrl: j['liteUrl'] ?? '',
-        fullUrl: j['fullUrl'] ?? '',
-        nick: j['nick'] ?? '',
-        onboardingDone: j['onboardingDone'] == true,
-      );
+    clientPackage: j['clientPackage'] ?? 'com.gta.game',
+    clientActivity: j['clientActivity'] ?? 'com.gta.game.SAMP',
+    cachePath: j['cachePath'] ?? '/storage/emulated/0/GTA',
+    liteUrl: j['liteUrl'] ?? '',
+    fullUrl: j['fullUrl'] ?? '',
+    nick: j['nick'] ?? '',
+    manifestUrl: j['manifestUrl'] ?? '',
+    onboardingDone: j['onboardingDone'] == true,
+  );
 }
 
 class ConfigStore {
@@ -68,6 +73,7 @@ class ConfigStore {
   static const _manualKey = 'servers.manual.v1';
   static const _favoritesKey = 'favorites.v1';
   static const _nicksKey = 'nicks.v1';
+  static const _manifestKey = 'manifest.v1';
 
   final SharedPreferences _prefs;
 
@@ -101,11 +107,12 @@ class ConfigStore {
   }
 
   Future<void> saveManualServers(List<Server> servers) => _prefs.setString(
-        _manualKey,
-        jsonEncode(servers.map((s) => s.toJson()).toList()),
-      );
+    _manualKey,
+    jsonEncode(servers.map((s) => s.toJson()).toList()),
+  );
 
-  Set<String> favorites() => (_prefs.getStringList(_favoritesKey) ?? const []).toSet();
+  Set<String> favorites() =>
+      (_prefs.getStringList(_favoritesKey) ?? const []).toSet();
 
   Future<void> saveFavorites(Set<String> favorites) =>
       _prefs.setStringList(_favoritesKey, favorites.toList()..sort());
@@ -123,4 +130,9 @@ class ConfigStore {
 
   Future<void> saveNicks(Map<String, String> nicks) =>
       _prefs.setString(_nicksKey, jsonEncode(nicks));
+
+  String? cachedManifest() => _prefs.getString(_manifestKey);
+
+  Future<void> saveManifestCache(String json) =>
+      _prefs.setString(_manifestKey, json);
 }
