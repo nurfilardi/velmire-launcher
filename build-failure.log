@@ -14,14 +14,18 @@ Preparing "Install CMake 3.22.1 v.3.22.1".
 Installing CMake 3.22.1 in /usr/local/lib/android/sdk/cmake/3.22.1
 "Install CMake 3.22.1 v.3.22.1" complete.
 "Install CMake 3.22.1 v.3.22.1" finished.
+Caught exception: Already watching path: /home/runner/work/velmire-launcher/velmire-launcher/android
 
 FAILURE: Build failed with an exception.
 
 * What went wrong:
-Execution failed for task ':app:mergeReleaseResources'.
-> A failure occurred while executing com.android.build.gradle.internal.res.Aapt2CompileRunnable
-   > AAPT2 aapt2-8.9.1-12782657-linux Daemon #2: Unexpected error during compile '/home/runner/work/velmire-launcher/velmire-launcher/android/app/src/main/res/mipmap-xxhdpi/ic_launcher.png', attempting to stop daemon.
-     This should not happen under normal circumstances, please file an issue if it does.
+Execution failed for task ':app:processReleaseResources'.
+> A failure occurred while executing com.android.build.gradle.internal.res.LinkApplicationAndroidResourcesTask$TaskAction
+   > Android resource linking failed
+     ERROR: /home/runner/work/velmire-launcher/velmire-launcher/android/app/src/main/AndroidManifest.xml:15:9-32:20: AAPT: error: resource style/LaunchTheme (aka id.velmire.launcher:style/LaunchTheme) not found.
+
+     ERROR: /home/runner/work/velmire-launcher/velmire-launcher/android/app/src/main/AndroidManifest.xml:24:13-27:17: AAPT: error: resource style/NormalTheme (aka id.velmire.launcher:style/NormalTheme) not found.
+
 
 * Try:
 > Run with --stacktrace option to get the stack trace.
@@ -29,6 +33,6 @@ Execution failed for task ':app:mergeReleaseResources'.
 > Run with --scan to get full insights.
 > Get more help at https://help.gradle.org.
 
-BUILD FAILED in 3m 8s
-Running Gradle task 'assembleRelease'...                          190.6s
+BUILD FAILED in 3m 37s
+Running Gradle task 'assembleRelease'...                          218.2s
 Gradle task assembleRelease failed with exit code 1
