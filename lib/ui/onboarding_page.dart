@@ -42,15 +42,23 @@ class _OnboardingPageState extends State<OnboardingPage> {
 
   Future<void> _init() async {
     final state = AppScope.of(context);
-    final storage = await _bridge.hasStorageAccess();
-    final installed = await _bridge.isInstalled(state.config.clientPackage);
-    final status = await state.gameData.status();
-    if (!mounted) return;
-    setState(() {
-      _storage = storage;
-      _installed = installed;
-      _dataReady = status.ready;
-    });
+    try {
+      final storage = await _bridge.hasStorageAccess();
+      final installed = await _bridge.isInstalled(state.config.clientPackage);
+      final status = await state.gameData.status();
+      AppLog.log(
+        'onboarding init storage=$storage installed=$installed ready=${status.ready}',
+      );
+      if (!mounted) return;
+      setState(() {
+        _storage = storage;
+        _installed = installed;
+        _dataReady = status.ready;
+      });
+    } catch (e, s) {
+      AppLog.exception('onboarding init', e, s);
+      rethrow;
+    }
   }
 
   @override
@@ -96,19 +104,12 @@ class _OnboardingPageState extends State<OnboardingPage> {
       }
       if (zipPath == null) throw StateError('unduhan tidak selesai');
       if (mounted) setState(() => _progressLabel = 'Ekstrak...');
-      await state.gameData.extract(
-        zipPath!,
-        onProgress: (done, total, entry) {
-          if (!mounted) return;
-          setState(() {
-            _progress = total > 0 ? done / total : 0;
-            _progressLabel = 'Ekstrak $done/$total · $entry';
-          });
-        },
-      );
+      await state.gameData.extract(zipPath!);
       await _init();
+      if (!mounted) return;
       showToast(context, 'Data siap.');
     } catch (e) {
+      if (!mounted) return;
       showToast(context, 'Gagal: $e');
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -130,8 +131,10 @@ class _OnboardingPageState extends State<OnboardingPage> {
     try {
       await data.importArchive(path);
       await _init();
+      if (!mounted) return;
       showToast(context, 'Import selesai.');
     } catch (e) {
+      if (!mounted) return;
       showToast(context, 'Gagal: $e');
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -179,7 +182,9 @@ class _OnboardingPageState extends State<OnboardingPage> {
                   const Spacer(),
                   if (_step > 1)
                     TextButton(
-                      onPressed: _busy ? null : () => setState(() => _step--),
+                      onPressed: _busy
+                          ? null
+                          : () => setState(() => _step--),
                       child: const Text('KEMBALI'),
                     ),
                 ],
