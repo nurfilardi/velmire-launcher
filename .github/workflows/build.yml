@@ -75,16 +75,14 @@ jobs:
           set -o pipefail
           flutter build apk --release --target-platform android-arm64 2>&1 | tee build.log
 
-      - name: Save build log
+      - name: Publish build log
         if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           if [ ! -s build.log ]; then exit 0; fi
-          git config user.name ci
-          git config user.email ci@local
-          cp build.log ci-build.log
-          git add ci-build.log
-          git commit -m "ci: build log" || true
-          git push
+          gh release delete ci-build-log --yes --cleanup-tag || true
+          gh release create ci-build-log build.log --title "CI build log" --notes "Build $GITHUB_SHA"
 
       - uses: actions/upload-artifact@v4
         with:
