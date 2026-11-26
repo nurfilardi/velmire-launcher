@@ -1,3 +1,4 @@
+# Velmire Launcher CI — build APK on push, release on tag
 name: build
 
 on:
