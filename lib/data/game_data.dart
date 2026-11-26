@@ -1,9 +1,9 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:archive/archive.dart';
 import 'package:archive/archive_io.dart';
+import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
 
 import 'ini_writer.dart';
@@ -52,7 +52,8 @@ class GameData {
   final String cachePath;
   final http.Client _client;
 
-  GameData(this.cachePath, {http.Client? client}) : _client = client ?? http.Client();
+  GameData(this.cachePath, {http.Client? client})
+    : _client = client ?? http.Client();
 
   Directory get root => Directory(cachePath);
   Directory get _downloads => Directory('$cachePath/.downloads');
@@ -60,7 +61,12 @@ class GameData {
   Future<DataStatus> status() async {
     final dir = root;
     if (!await dir.exists()) {
-      return const DataStatus(folderExists: false, texdbExists: false, bytes: 0, files: 0);
+      return const DataStatus(
+        folderExists: false,
+        texdbExists: false,
+        bytes: 0,
+        files: 0,
+      );
     }
     var bytes = 0;
     var files = 0;
@@ -80,7 +86,13 @@ class GameData {
     );
   }
 
-  Stream<DownloadProgress> download(String url, {required bool lite}) async* {
+  Stream<DownloadProgress> download(
+    String url, {
+    required bool lite,
+    int maxBytes = 0,
+    String checksum = '',
+    String? filename,
+  }) async* {
     final uri = Uri.tryParse(url.trim());
     if (uri == null || !(uri.isScheme('http') || uri.isScheme('https'))) {
       throw const FormatException('URL harus http/https langsung ke file');
@@ -88,21 +100,39 @@ class GameData {
     if (uri.path.toLowerCase().endsWith('.7z')) {
       throw const UnsupportedArchive('File .7z belum didukung. Pakai .zip.');
     }
+    if (checksum.isNotEmpty &&
+        !RegExp(r'^[0-9a-fA-F]{64}$').hasMatch(checksum)) {
+      throw const FormatException('Checksum harus SHA-256');
+    }
     await _downloads.create(recursive: true);
-    final target = '$cachePath/.downloads/${lite ? 'lite' : 'full'}.zip';
+    final safeName = filename == null || filename.trim().isEmpty
+        ? (lite ? 'lite' : 'full')
+        : filename.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
+    final target = '$cachePath/.downloads/$safeName.zip';
     final part = File('$target.part');
     var existing = await part.exists() ? await part.length() : 0;
 
     final request = http.Request('GET', uri);
     if (existing > 0) request.headers['Range'] = 'bytes=$existing-';
-    final response = await _client.send(request).timeout(const Duration(seconds: 30));
+    final response = await _client
+        .send(request)
+        .timeout(const Duration(seconds: 30));
 
     var mode = FileMode.append;
     var total = existing + (response.contentLength ?? 0);
     if (response.statusCode == 206) {
       final range = response.headers['content-range'];
-      final match = range == null ? null : RegExp(r'/(\d+)$').firstMatch(range);
-      if (match != null) total = int.parse(match.group(1)!);
+      final match = range == null
+          ? null
+          : RegExp(r'bytes (\d+)-(\d+)/(\d+)').firstMatch(range);
+      if (match != null) {
+        final start = int.parse(match.group(1)!);
+        if (start != existing) {
+          await part.delete();
+          throw StateError('Server mengirim posisi resume yang salah');
+        }
+        total = int.parse(match.group(3)!);
+      }
     } else if (response.statusCode == 200) {
       existing = 0;
       mode = FileMode.write;
@@ -110,19 +140,51 @@ class GameData {
     } else {
       throw HttpException('HTTP ${response.statusCode}', uri: uri);
     }
+    if (maxBytes > 0 && total > maxBytes) {
+      throw FormatException(
+        'Ukuran file ${total}B melebihi batas ${maxBytes}B',
+      );
+    }
 
     final sink = part.openWrite(mode: mode);
     var received = existing;
-    yield DownloadProgress(received: received, total: total, done: false, path: target);
+    yield DownloadProgress(
+      received: received,
+      total: total,
+      done: false,
+      path: target,
+    );
     try {
       await for (final chunk in response.stream) {
+        if (maxBytes > 0 && received + chunk.length > maxBytes) {
+          throw FormatException('Unduhan melebihi batas ${maxBytes}B');
+        }
         sink.add(chunk);
         received += chunk.length;
-        yield DownloadProgress(received: received, total: total, done: false, path: target);
+        yield DownloadProgress(
+          received: received,
+          total: total,
+          done: false,
+          path: target,
+        );
       }
       await sink.flush();
+    } catch (_) {
+      try {
+        await part.delete();
+      } catch (_) {}
+      rethrow;
     } finally {
       await sink.close();
+    }
+    if (checksum.isNotEmpty) {
+      final actual = (await sha256.bind(part.openRead()).first).toString();
+      if (actual.toLowerCase() != checksum.toLowerCase()) {
+        try {
+          await part.delete();
+        } catch (_) {}
+        throw StateError('Checksum tidak cocok');
+      }
     }
     final file = await part.rename(target);
     yield DownloadProgress(
@@ -133,7 +195,10 @@ class GameData {
     );
   }
 
-  Future<void> importArchive(String sourcePath) async {
+  Future<void> importArchive(
+    String sourcePath, {
+    void Function(int done, int total, String entry)? onProgress,
+  }) async {
     final name = sourcePath.toLowerCase();
     if (name.endsWith('.7z') || name.endsWith('.rar')) {
       throw const UnsupportedArchive('Format ini belum didukung. Pakai .zip.');
@@ -141,19 +206,24 @@ class GameData {
     await _downloads.create(recursive: true);
     final dest = '$cachePath/.downloads/import.zip';
     await File(sourcePath).copy(dest);
-    await extract(dest);
+    await extract(dest, onProgress: onProgress);
   }
 
-  Future<void> extract(String zipPath) async {
+  Future<void> extract(
+    String zipPath, {
+    void Function(int done, int total, String entry)? onProgress,
+  }) async {
     final input = InputFileStream(zipPath);
     final archive = ZipDecoder().decodeStream(input);
     final files = archive.files.where((f) => f.isFile).toList(growable: false);
-    final stripGta = files.isNotEmpty &&
+    final stripGta =
+        files.isNotEmpty &&
         files.every((f) {
           final segs = _segments(f.name);
           return segs.isNotEmpty && segs.first.toLowerCase() == 'gta';
         });
     await root.create(recursive: true);
+    var done = 0;
     try {
       for (final entry in archive.files) {
         if (!entry.isFile || entry.isSymbolicLink) continue;
@@ -171,6 +241,7 @@ class GameData {
           rethrow;
         }
         await temp.rename(destination.path);
+        onProgress?.call(++done, files.length, rel);
       }
     } finally {
       await input.close();
@@ -218,24 +289,18 @@ class GameData {
 
   String? _safePath(String raw, {required bool stripGta}) {
     var normalized = raw.replaceAll('\\', '/');
-    if (normalized.startsWith('/') || RegExp(r'^[A-Za-z]:').hasMatch(normalized)) {
+    if (normalized.startsWith('/') ||
+        RegExp(r'^[A-Za-z]:').hasMatch(normalized)) {
       return null;
     }
     final segments = _segments(normalized);
     if (segments.any((s) => s == '..' || s == '.')) return null;
-    if (stripGta && segments.isNotEmpty && segments.first.toLowerCase() == 'gta') {
+    if (stripGta &&
+        segments.isNotEmpty &&
+        segments.first.toLowerCase() == 'gta') {
       segments.removeAt(0);
     }
     if (segments.isEmpty) return null;
     return segments.join('/');
   }
 }
-
-String formatBytes(int bytes) {
-  if (bytes >= 1 << 30) return '${(bytes / (1 << 30)).toStringAsFixed(2)} GB';
-  if (bytes >= 1 << 20) return '${(bytes / (1 << 20)).toStringAsFixed(1)} MB';
-  if (bytes >= 1 << 10) return '${(bytes / (1 << 10)).toStringAsFixed(0)} KB';
-  return '$bytes B';
-}
-
-String prettyJson(Object value) => const JsonEncoder.withIndent('  ').convert(value);
