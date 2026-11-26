@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 
+import '../theme/app_theme.dart';
 import 'data_page.dart';
 import 'home_page.dart';
 import 'servers_page.dart';
 import 'settings_page.dart';
-import '../theme/app_theme.dart';
 
 class AppShell extends StatefulWidget {
   const AppShell({super.key});
@@ -35,14 +35,14 @@ class _AppShellState extends State<AppShell> {
         ),
         child: SafeArea(
           top: false,
-          child: SizedBox(
-            height: 60,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(8, 6, 8, 4),
             child: Row(
               children: [
                 _TabItem(
-                  icon: Icons.home_outlined,
-                  activeIcon: Icons.home,
-                  label: 'Home',
+                  icon: Icons.route_outlined,
+                  activeIcon: Icons.route,
+                  label: 'Rute',
                   selected: _index == 0,
                   onTap: () => setState(() => _index = 0),
                 ),
@@ -54,8 +54,8 @@ class _AppShellState extends State<AppShell> {
                   onTap: () => setState(() => _index = 1),
                 ),
                 _TabItem(
-                  icon: Icons.folder_outlined,
-                  activeIcon: Icons.folder,
+                  icon: Icons.inventory_2_outlined,
+                  activeIcon: Icons.inventory_2,
                   label: 'Data',
                   selected: _index == 2,
                   onTap: () => setState(() => _index = 2),
@@ -93,32 +93,40 @@ class _TabItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = selected ? Palette.accent : Palette.muted;
     return Expanded(
       child: InkWell(
         onTap: onTap,
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(selected ? activeIcon : icon, size: 21, color: color),
-            const SizedBox(height: 4),
-            Text(
-              label.toUpperCase(),
-              style: TextStyle(
-                fontFamily: AppTheme.body,
-                fontSize: 9.5,
-                letterSpacing: 1.2,
-                fontWeight: FontWeight.w600,
-                color: color,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          margin: const EdgeInsets.symmetric(horizontal: 3),
+          padding: const EdgeInsets.symmetric(vertical: 7),
+          decoration: BoxDecoration(
+            color: selected ? Palette.surfaceHi : Colors.transparent,
+            border: Border.all(
+              color: selected ? Palette.signal : Colors.transparent,
+            ),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                selected ? activeIcon : icon,
+                size: 20,
+                color: selected ? Palette.signal : Palette.muted,
               ),
-            ),
-            const SizedBox(height: 3),
-            Container(
-              width: selected ? 16 : 0,
-              height: 2,
-              color: Palette.accent,
-            ),
-          ],
+              const SizedBox(height: 3),
+              Text(
+                label,
+                style: TextStyle(
+                  fontFamily: AppTheme.body,
+                  fontSize: 10,
+                  letterSpacing: 0.3,
+                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                  color: selected ? Palette.ink : Palette.muted,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
