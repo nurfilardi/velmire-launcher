@@ -99,7 +99,18 @@ jobs:
           path: build/app/outputs/flutter-apk/*.apk
           if-no-files-found: error
 
-      - name: Publish release
+      - name: Publish latest APK release
+        if: success() && github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: Latest build
+          body: APK otomatis dari commit ${{ github.sha }}.
+          files: build/app/outputs/flutter-apk/*.apk
+          fail_on_unmatched_files: true
+          make_latest: true
+
+      - name: Publish versioned release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
