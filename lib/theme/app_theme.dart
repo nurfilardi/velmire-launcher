@@ -18,8 +18,8 @@ class AppTheme {
   static const display = 'SampDisplay';
   static const body = 'SampBody';
 
-  static const plate = BeveledRectangleBorder(
-    borderRadius: BorderRadius.all(Radius.circular(2)),
+  static const plate = RoundedRectangleBorder(
+    borderRadius: BorderRadius.all(Radius.circular(10)),
   );
 
   static ThemeData get dark {
@@ -105,9 +105,9 @@ class AppTheme {
           shape: plate,
           textStyle: const TextStyle(
             fontFamily: AppTheme.body,
-            fontSize: 14,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 1.1,
+            fontSize: 15,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 0.2,
           ),
         ),
       ),
@@ -121,7 +121,7 @@ class AppTheme {
             fontFamily: AppTheme.body,
             fontSize: 13,
             fontWeight: FontWeight.w600,
-            letterSpacing: 0.8,
+            letterSpacing: 0.2,
           ),
         ),
       ),
@@ -135,15 +135,15 @@ class AppTheme {
           vertical: 14,
         ),
         enabledBorder: const OutlineInputBorder(
-          borderRadius: BorderRadius.all(Radius.circular(2)),
+          borderRadius: BorderRadius.all(Radius.circular(10)),
           borderSide: BorderSide(color: Palette.line),
         ),
         focusedBorder: const OutlineInputBorder(
-          borderRadius: BorderRadius.all(Radius.circular(2)),
+          borderRadius: BorderRadius.all(Radius.circular(10)),
           borderSide: BorderSide(color: Palette.accent, width: 1.6),
         ),
         errorBorder: const OutlineInputBorder(
-          borderRadius: BorderRadius.all(Radius.circular(2)),
+          borderRadius: BorderRadius.all(Radius.circular(10)),
           borderSide: BorderSide(color: Palette.danger),
         ),
       ),
@@ -157,7 +157,7 @@ class AppTheme {
         backgroundColor: Palette.surface,
         surfaceTintColor: Colors.transparent,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(2)),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
         ),
       ),
       progressIndicatorTheme: const ProgressIndicatorThemeData(
@@ -167,8 +167,8 @@ class AppTheme {
       floatingActionButtonTheme: const FloatingActionButtonThemeData(
         backgroundColor: Palette.signal,
         foregroundColor: Palette.bg,
-        shape: BeveledRectangleBorder(
-          borderRadius: BorderRadius.all(Radius.circular(2)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.all(Radius.circular(10)),
         ),
       ),
     );

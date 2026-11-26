@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 
 import '../core/app_log.dart';
 import '../core/format.dart';
+import '../data/game_data.dart';
+import '../data/resource_manifest.dart';
 import '../platform/native_bridge.dart';
 import '../state/app_state.dart';
 import '../theme/app_theme.dart';
@@ -18,53 +20,39 @@ class OnboardingPage extends StatefulWidget {
 
 class _OnboardingPageState extends State<OnboardingPage> {
   final _bridge = NativeBridge();
-  final _url = TextEditingController();
-  int _step = 1;
+  bool _initialized = false;
   bool _storage = false;
-  bool _lite = true;
+  DataEdition _edition = DataEdition.lite;
+  DataStatus? _status;
   bool _busy = false;
   double _progress = 0;
   String _progressLabel = '';
-  bool _dataReady = false;
-  bool _installed = false;
-  bool _checkedOnce = false;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (!_checkedOnce) {
-      _checkedOnce = true;
-      final config = AppScope.of(context).config;
-      _url.text = config.liteUrl;
-      _init();
-    }
+    if (_initialized) return;
+    _initialized = true;
+    _init();
   }
 
   Future<void> _init() async {
     final state = AppScope.of(context);
     try {
       final storage = await _bridge.hasStorageAccess();
-      final installed = await _bridge.isInstalled(state.config.clientPackage);
       final status = await state.gameData.status();
-      AppLog.log(
-        'onboarding init storage=$storage installed=$installed ready=${status.ready}',
-      );
+      if (state.manifest == null && state.config.manifestUrl.isNotEmpty) {
+        await state.loadManifest();
+      }
       if (!mounted) return;
       setState(() {
         _storage = storage;
-        _installed = installed;
-        _dataReady = status.ready;
+        _status = status;
       });
+      AppLog.log('setup storage=$storage ready=${status.ready}');
     } catch (e, s) {
-      AppLog.exception('onboarding init', e, s);
-      rethrow;
+      AppLog.exception('setup init', e, s);
     }
-  }
-
-  @override
-  void dispose() {
-    _url.dispose();
-    super.dispose();
   }
 
   Future<void> _requestStorage() async {
@@ -72,19 +60,46 @@ class _OnboardingPageState extends State<OnboardingPage> {
     await _init();
   }
 
-  Future<void> _download() async {
-    final state = AppScope.of(context);
-    final url = _url.text.trim();
-    if (url.isEmpty) {
-      showToast(context, 'Isi URL zip data game dulu.');
+  ResourceSource? _source(AppState state) =>
+      state.manifest?.sourceFor(_edition);
+
+  Future<void> _primary() async {
+    if (_status?.ready ?? false) {
+      await AppScope.of(context).updateConfig(
+        AppScope.of(context).config.copyWith(onboardingDone: true),
+      );
       return;
     }
-    await state.updateConfig(
-      state.config.copyWith(
-        liteUrl: _lite ? url : state.config.liteUrl,
-        fullUrl: _lite ? state.config.fullUrl : url,
-      ),
-    );
+    await _download();
+  }
+
+  Future<void> _download() async {
+    final state = AppScope.of(context);
+    if (!_storage) {
+      await _requestStorage();
+      if (!_storage) {
+        if (mounted) showToast(context, 'Izinkan akses folder dulu.');
+        return;
+      }
+    }
+    if (state.manifest == null) {
+      if (state.config.manifestUrl.isEmpty) {
+        if (mounted) showToast(context, 'Provider data belum diatur.');
+        return;
+      }
+      await state.loadManifest();
+      if (!mounted) return;
+    }
+    final source = _source(state);
+    if (source == null) {
+      if (mounted) {
+        showToast(
+          context,
+          'Sumber ${_edition == DataEdition.lite ? 'Lite' : 'Original'} tidak ada di manifest.',
+        );
+      }
+      return;
+    }
     setState(() {
       _busy = true;
       _progress = 0;
@@ -92,7 +107,13 @@ class _OnboardingPageState extends State<OnboardingPage> {
     });
     String? zipPath;
     try {
-      await for (final p in state.gameData.download(url, lite: _lite)) {
+      await for (final p in state.gameData.download(
+        source.url,
+        lite: _edition == DataEdition.lite,
+        maxBytes: source.size,
+        checksum: source.checksum,
+        filename: _edition == DataEdition.lite ? 'lite' : 'original',
+      )) {
         if (!mounted) return;
         setState(() {
           _progress = p.ratio;
@@ -103,17 +124,34 @@ class _OnboardingPageState extends State<OnboardingPage> {
         });
       }
       if (zipPath == null) throw StateError('unduhan tidak selesai');
-      if (mounted) setState(() => _progressLabel = 'Ekstrak...');
-      await state.gameData.extract(zipPath!);
+      if (mounted) setState(() => _progressLabel = 'Menyiapkan data...');
+      await state.gameData.extract(
+        zipPath!,
+        onProgress: (done, total, _) {
+          if (!mounted || total == 0) return;
+          setState(() {
+            _progress = done / total;
+            _progressLabel = 'Menyiapkan ${done * 100 ~/ total}%';
+          });
+        },
+      );
       await _init();
-      if (!mounted) return;
-      showToast(context, 'Data siap.');
+      if (mounted) showToast(context, 'Data siap.');
     } catch (e) {
-      if (!mounted) return;
-      showToast(context, 'Gagal: $e');
+      if (mounted) showToast(context, 'Gagal: $e');
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _progress = 0;
+        });
+      }
     }
+  }
+
+  Future<void> _skip() async {
+    final state = AppScope.of(context);
+    await state.updateConfig(state.config.copyWith(onboardingDone: true));
   }
 
   Future<void> _importZip() async {
@@ -126,78 +164,159 @@ class _OnboardingPageState extends State<OnboardingPage> {
     final data = AppScope.of(context).gameData;
     setState(() {
       _busy = true;
-      _progressLabel = 'Ekstrak...';
+      _progressLabel = 'Menyiapkan data...';
     });
     try {
       await data.importArchive(path);
       await _init();
-      if (!mounted) return;
-      showToast(context, 'Import selesai.');
+      if (mounted) showToast(context, 'Data siap.');
     } catch (e) {
-      if (!mounted) return;
-      showToast(context, 'Gagal: $e');
+      if (mounted) showToast(context, 'Gagal: $e');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
   }
 
-  Future<void> _installApk() async {
-    final picked = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: ['apk'],
-    );
-    final path = picked?.files.single.path;
-    if (path == null) return;
-    await _bridge.installApk(path);
-    await Future.delayed(const Duration(seconds: 2));
-    await _init();
-  }
-
-  Future<void> _finish() async {
-    await AppScope.of(context).updateConfig(
-      AppScope.of(context).config.copyWith(onboardingDone: true),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
+    final state = AppScope.of(context);
+    final status = _status;
+    final ready = status?.ready ?? false;
+    final source = _source(state);
+    final configured = state.config.manifestUrl.trim().isNotEmpty;
+    final canDownload = ready || (configured && source != null);
+
     return Scaffold(
       body: SafeArea(
-        child: Column(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(22, 22, 22, 28),
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-              child: Row(
-                children: [
-                  Text(
-                    'SETUP ${_step.toString().padLeft(2, '0')}/03',
-                    style: const TextStyle(
-                      fontFamily: AppTheme.body,
-                      fontSize: 11,
-                      letterSpacing: 2,
-                      fontWeight: FontWeight.w600,
-                      color: Palette.accent,
-                    ),
-                  ),
-                  const Spacer(),
-                  if (_step > 1)
-                    TextButton(
-                      onPressed: _busy
-                          ? null
-                          : () => setState(() => _step--),
-                      child: const Text('KEMBALI'),
-                    ),
-                ],
+            const SampMark(size: 30, caption: 'SA-MP'),
+            const SizedBox(height: 44),
+            const Text(
+              'Siap main?',
+              style: TextStyle(
+                fontFamily: AppTheme.display,
+                fontSize: 50,
+                fontWeight: FontWeight.w700,
+                height: 0.95,
+                letterSpacing: -0.8,
+                color: Palette.ink,
               ),
             ),
-            Expanded(
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
-                children: [
-                  if (_step == 1) ..._stepPermission(),
-                  if (_step == 2) ..._stepData(),
-                  if (_step == 3) ..._stepClient(),
-                ],
+            const SizedBox(height: 10),
+            const Text(
+              'Pilih data, unduh sekali, lalu masuk server.',
+              style: TextStyle(
+                fontFamily: AppTheme.body,
+                fontSize: 14,
+                color: Palette.muted,
+              ),
+            ),
+            const SizedBox(height: 36),
+            _PermissionRow(
+              granted: _storage,
+              onTap: _busy ? null : _requestStorage,
+            ),
+            const SizedBox(height: 26),
+            Row(
+              children: [
+                Expanded(
+                  child: _EditionTile(
+                    title: 'Lite',
+                    caption: sourceSize(state, DataEdition.lite) ?? 'Ringan',
+                    selected: _edition == DataEdition.lite,
+                    onTap: _busy
+                        ? null
+                        : () => setState(() => _edition = DataEdition.lite),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _EditionTile(
+                    title: 'Original',
+                    caption:
+                        sourceSize(state, DataEdition.original) ?? 'Lengkap',
+                    selected: _edition == DataEdition.original,
+                    onTap: _busy
+                        ? null
+                        : () => setState(() => _edition = DataEdition.original),
+                  ),
+                ),
+              ],
+            ),
+            if (ready) ...[
+              const SizedBox(height: 16),
+              StatusDot(
+                ok: true,
+                label:
+                    'Data siap · ${formatBytes(status!.bytes)} · ${status.files} file',
+              ),
+            ] else if (!configured) ...[
+              const SizedBox(height: 14),
+              const Text(
+                'Provider data belum diatur.',
+                style: TextStyle(
+                  fontFamily: AppTheme.body,
+                  fontSize: 12.5,
+                  color: Palette.muted,
+                ),
+              ),
+            ] else if (state.manifestLoading) ...[
+              const SizedBox(height: 14),
+              const Text(
+                'Memuat provider...',
+                style: TextStyle(
+                  fontFamily: AppTheme.body,
+                  fontSize: 12.5,
+                  color: Palette.muted,
+                ),
+              ),
+            ] else if (source == null) ...[
+              const SizedBox(height: 14),
+              Text(
+                state.manifestError ??
+                    'Sumber ${_edition == DataEdition.lite ? 'Lite' : 'Original'} tidak tersedia.',
+                style: const TextStyle(
+                  fontFamily: AppTheme.body,
+                  fontSize: 12.5,
+                  color: Palette.muted,
+                ),
+              ),
+            ],
+            if (_busy) ...[
+              const SizedBox(height: 24),
+              LinearProgressIndicator(value: _progress == 0 ? null : _progress),
+              const SizedBox(height: 8),
+              Text(
+                _progressLabel,
+                style: const TextStyle(
+                  fontFamily: AppTheme.body,
+                  fontSize: 12,
+                  color: Palette.muted,
+                ),
+              ),
+            ],
+            const SizedBox(height: 28),
+            FilledButton.icon(
+              onPressed: _busy || !canDownload ? null : _primary,
+              icon: Icon(
+                ready ? Icons.arrow_forward_rounded : Icons.download_rounded,
+                size: 20,
+              ),
+              label: Text(ready ? 'Lanjut' : 'Unduh'),
+            ),
+            const SizedBox(height: 10),
+            Center(
+              child: TextButton(
+                onPressed: _busy ? null : _importZip,
+                child: const Text('Impor ZIP dari HP'),
+              ),
+            ),
+            Center(
+              child: TextButton(
+                onPressed: _busy ? null : _skip,
+                child: const Text('Lewati'),
               ),
             ),
           ],
@@ -206,204 +325,96 @@ class _OnboardingPageState extends State<OnboardingPage> {
     );
   }
 
-  List<Widget> _stepPermission() => [
-        const SampMark(size: 66),
-        const SizedBox(height: 22),
-        const Text(
-          'AKSES FOLDER GTA',
-          style: TextStyle(
-            fontFamily: AppTheme.display,
-            fontSize: 32,
-            fontWeight: FontWeight.w700,
-            color: Palette.ink,
-          ),
-        ),
-        const SizedBox(height: 10),
-        const Text(
-          'Launcher menyimpan data game di folder GTA dan menulis file setting koneksi. '
-          'Butuh izin akses folder supaya proses unduh, ekstrak, dan connect bisa jalan.',
-          style: TextStyle(fontFamily: AppTheme.body, fontSize: 13.5, color: Palette.muted, height: 1.55),
-        ),
-        const SizedBox(height: 18),
-        Panel(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              StatusDot(ok: _storage, label: _storage ? 'Akses folder aktif' : 'Belum ada akses'),
-              const SizedBox(height: 12),
-              FilledButton(
-                onPressed: _storage ? null : _requestStorage,
-                child: Text(_storage ? 'SUDAH DIIZINKAN' : 'IZINKAN AKSES FOLDER'),
-              ),
-              const SizedBox(height: 8),
-              TextButton(
-                onPressed: () => setState(() => _step = 2),
-                child: const Text('LANJUT TANPA IZIN'),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 18),
-        const Text(
-          'Yang app ini TIDAK lakukan: membawa atau menyediakan file GTA. Data game berasal dari URL milik lu.',
-          style: TextStyle(fontFamily: AppTheme.body, fontSize: 11.5, color: Palette.muted, height: 1.5),
-        ),
-      ];
-
-  List<Widget> _stepData() => [
-        const SampMark(size: 40, caption: 'LANGKAH 2 — DATA GAME'),
-        const SizedBox(height: 22),
-        const Text(
-          'UNDUH DATA GAME',
-          style: TextStyle(
-            fontFamily: AppTheme.display,
-            fontSize: 32,
-            fontWeight: FontWeight.w700,
-            color: Palette.ink,
-          ),
-        ),
-        const SizedBox(height: 10),
-        const Text(
-          'Pilih Lite atau Original, lalu tempel URL zip langsung (bukan link halaman). '
-          'Butuh .zip; .7z/.rar belum didukung.',
-          style: TextStyle(fontFamily: AppTheme.body, fontSize: 13, color: Palette.muted, height: 1.5),
-        ),
-        const SizedBox(height: 16),
-        Row(
-          children: [
-            Expanded(child: _Choice(label: 'LITE', selected: _lite, onTap: () => setState(() => _lite = true))),
-            const SizedBox(width: 10),
-            Expanded(child: _Choice(label: 'ORIGINAL', selected: !_lite, onTap: () => setState(() => _lite = false))),
-          ],
-        ),
-        const SizedBox(height: 14),
-        TextField(
-          controller: _url,
-          keyboardType: TextInputType.url,
-          enabled: !_busy,
-          decoration: const InputDecoration(hintText: 'https://hosting-lu/data.zip'),
-        ),
-        if (_busy) ...[
-          const SizedBox(height: 14),
-          LinearProgressIndicator(value: _progress == 0 ? null : _progress),
-          const SizedBox(height: 6),
-          Text(
-            _progressLabel,
-            style: const TextStyle(fontFamily: AppTheme.body, fontSize: 11, color: Palette.muted),
-          ),
-        ],
-        const SizedBox(height: 14),
-        FilledButton(
-          onPressed: _busy ? null : _download,
-          child: const Text('UNDUH & EKSTRAK'),
-        ),
-        const SizedBox(height: 10),
-        OutlinedButton(
-          onPressed: _busy ? null : _importZip,
-          style: OutlinedButton.styleFrom(
-            minimumSize: const Size.fromHeight(48),
-            foregroundColor: Palette.ink,
-            side: const BorderSide(color: Palette.line),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-          ),
-          child: const Text('IMPORT ZIP DARI HP'),
-        ),
-        const SizedBox(height: 6),
-        Row(
-          children: [
-            Expanded(
-              child: TextButton(
-                onPressed: _busy ? null : () => setState(() => _step = 3),
-                child: Text(_dataReady ? 'LANJUT' : 'LEWATI DULU'),
-              ),
-            ),
-          ],
-        ),
-      ];
-
-  List<Widget> _stepClient() => [
-        const SampMark(size: 40, caption: 'LANGKAH 3 — KLIEN GAME'),
-        const SizedBox(height: 22),
-        const Text(
-          'KLIEN SA-MP',
-          style: TextStyle(
-            fontFamily: AppTheme.display,
-            fontSize: 32,
-            fontWeight: FontWeight.w700,
-            color: Palette.ink,
-          ),
-        ),
-        const SizedBox(height: 10),
-        const Text(
-          'Game dijalankan oleh klien SA-MP Android yang terpasang. Install dari APK milik lu.',
-          style: TextStyle(fontFamily: AppTheme.body, fontSize: 13, color: Palette.muted, height: 1.5),
-        ),
-        const SizedBox(height: 16),
-        Panel(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              StatusDot(ok: _installed, label: _installed ? 'Klien terdeteksi' : 'Klien belum terpasang'),
-              const SizedBox(height: 4),
-              Text(
-                AppScope.of(context).config.clientPackage,
-                style: const TextStyle(fontFamily: AppTheme.body, fontSize: 11, color: Palette.muted),
-              ),
-              const SizedBox(height: 12),
-              OutlinedButton.icon(
-                onPressed: _installApk,
-                style: OutlinedButton.styleFrom(
-                  minimumSize: const Size.fromHeight(46),
-                  foregroundColor: Palette.ink,
-                  side: const BorderSide(color: Palette.line),
-                ),
-                icon: const Icon(Icons.android, size: 18),
-                label: const Text('PILIH APK UNTUK INSTALL'),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 18),
-        FilledButton(onPressed: _finish, child: const Text('SELESAI')),
-        const SizedBox(height: 8),
-        Center(
-          child: TextButton(
-            onPressed: () => showToast(context, 'Bisa diganti nanti di Setelan.'),
-            child: const Text('ATUR PACKAGE NANTI'),
-          ),
-        ),
-      ];
+  String? sourceSize(AppState state, DataEdition edition) {
+    final size = state.manifest?.sourceFor(edition)?.size ?? 0;
+    return size > 0 ? formatBytes(size) : null;
+  }
 }
 
-class _Choice extends StatelessWidget {
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
+class _PermissionRow extends StatelessWidget {
+  final bool granted;
+  final VoidCallback? onTap;
 
-  const _Choice({required this.label, required this.selected, required this.onTap});
+  const _PermissionRow({required this.granted, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(
+          granted ? Icons.check_circle : Icons.folder_outlined,
+          size: 20,
+          color: granted ? Palette.online : Palette.signal,
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            granted ? 'Akses folder aktif' : 'Butuh akses folder GTA',
+            style: const TextStyle(
+              fontFamily: AppTheme.body,
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+              color: Palette.ink,
+            ),
+          ),
+        ),
+        if (!granted)
+          TextButton(onPressed: onTap, child: const Text('Izinkan')),
+      ],
+    );
+  }
+}
+
+class _EditionTile extends StatelessWidget {
+  final String title;
+  final String caption;
+  final bool selected;
+  final VoidCallback? onTap;
+
+  const _EditionTile({
+    required this.title,
+    required this.caption,
+    required this.selected,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(6),
-      child: Container(
-        height: 46,
-        alignment: Alignment.center,
+      borderRadius: BorderRadius.circular(10),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 140),
+        padding: const EdgeInsets.fromLTRB(16, 15, 16, 14),
         decoration: BoxDecoration(
           color: selected ? Palette.accent : Palette.surface,
-          borderRadius: BorderRadius.circular(6),
-          border: Border.all(color: selected ? Palette.accent : Palette.line),
+          borderRadius: BorderRadius.circular(10),
         ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontFamily: AppTheme.display,
-            fontSize: 18,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 1.2,
-            color: selected ? Palette.accentInk : Palette.muted,
-          ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              title,
+              style: TextStyle(
+                fontFamily: AppTheme.display,
+                fontSize: 28,
+                fontWeight: FontWeight.w700,
+                height: 1,
+                color: selected ? Palette.accentInk : Palette.ink,
+              ),
+            ),
+            const SizedBox(height: 7),
+            Text(
+              caption,
+              style: TextStyle(
+                fontFamily: AppTheme.body,
+                fontSize: 11.5,
+                color: selected
+                    ? Palette.accentInk.withValues(alpha: 0.72)
+                    : Palette.muted,
+              ),
+            ),
+          ],
         ),
       ),
     );

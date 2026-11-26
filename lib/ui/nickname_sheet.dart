@@ -60,13 +60,7 @@ class _NicknameSheetState extends State<NicknameSheet> {
       var access = await _bridge.hasStorageAccess();
       if (!access) access = await _bridge.requestStorageAccess();
       if (!access) {
-        setState(() => _error = 'Akses folder GTA ditolak. Buka Pengaturan lalu izinkan.');
-        return;
-      }
-      final installed = await _bridge.isInstalled(state.config.clientPackage);
-      if (!installed) {
-        setState(() => _error =
-            'Klien ${state.config.clientPackage} belum terpasang. Install APK dulu di Pengaturan.');
+        setState(() => _error = 'Akses folder GTA ditolak.');
         return;
       }
       await state.saveNick(widget.server.address, nick);
@@ -83,7 +77,10 @@ class _NicknameSheetState extends State<NicknameSheet> {
       if (!launched) {
         await Clipboard.setData(ClipboardData(text: widget.server.address));
         if (mounted) {
-          setState(() => _error = 'Gagal membuka klien. Alamat disalin ke clipboard.');
+          setState(
+            () =>
+                _error = 'Klien game tidak bisa dibuka. Alamat server disalin.',
+          );
         }
         return;
       }
@@ -99,37 +96,46 @@ class _NicknameSheetState extends State<NicknameSheet> {
   Widget build(BuildContext context) {
     final bottom = MediaQuery.of(context).viewInsets.bottom;
     return Padding(
-      padding: EdgeInsets.fromLTRB(20, 18, 20, 20 + bottom),
+      padding: EdgeInsets.fromLTRB(22, 20, 22, 20 + bottom),
       child: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              widget.server.name.isEmpty ? widget.server.address : widget.server.name,
+              widget.server.name.isEmpty
+                  ? widget.server.address
+                  : widget.server.name,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(
                 fontFamily: AppTheme.display,
-                fontSize: 26,
+                fontSize: 28,
                 fontWeight: FontWeight.w700,
+                height: 1.05,
                 color: Palette.ink,
               ),
             ),
-            const SizedBox(height: 2),
+            const SizedBox(height: 3),
             Text(
-              '${widget.server.address} · ${widget.server.players}/${widget.server.maxPlayers} player',
-              style: const TextStyle(fontFamily: AppTheme.body, fontSize: 12, color: Palette.muted),
+              '${widget.server.address} · ${widget.server.players}/${widget.server.maxPlayers}',
+              style: const TextStyle(
+                fontFamily: AppTheme.body,
+                fontSize: 12,
+                color: Palette.muted,
+              ),
             ),
-            const SizedBox(height: 18),
+            const SizedBox(height: 20),
             TextField(
               controller: _nick,
               maxLength: 20,
               autofocus: true,
-              inputFormatters: [FilteringTextInputFormatter.deny(RegExp(r'\s'))],
+              inputFormatters: [
+                FilteringTextInputFormatter.deny(RegExp(r'\s')),
+              ],
               decoration: const InputDecoration(
-                labelText: 'Username UCP / nick',
-                hintText: 'contoh: Reyzo',
+                labelText: 'Nick',
+                hintText: 'Reyzo',
                 counterText: '',
               ),
             ),
@@ -160,14 +166,12 @@ class _NicknameSheetState extends State<NicknameSheet> {
                   ? const SizedBox(
                       width: 18,
                       height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Palette.accentInk),
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Palette.accentInk,
+                      ),
                     )
-                  : const Text('MASUK SERVER'),
-            ),
-            const SizedBox(height: 10),
-            const Text(
-              'Nick disimpan per server. Login UCP tetap dilakukan di dalam game.',
-              style: TextStyle(fontFamily: AppTheme.body, fontSize: 11.5, color: Palette.muted),
+                  : const Text('Masuk'),
             ),
           ],
         ),
