@@ -71,7 +71,20 @@ jobs:
           EOF
 
       - name: Build APK
-        run: flutter build apk --release --target-platform android-arm64
+        run: |
+          set -o pipefail
+          flutter build apk --release --target-platform android-arm64 2>&1 | tee build.log
+
+      - name: Save build log
+        if: failure()
+        run: |
+          if [ ! -s build.log ]; then exit 0; fi
+          git config user.name ci
+          git config user.email ci@local
+          cp build.log ci-build.log
+          git add ci-build.log
+          git commit -m "ci: build log" || true
+          git push
 
       - uses: actions/upload-artifact@v4
         with:
