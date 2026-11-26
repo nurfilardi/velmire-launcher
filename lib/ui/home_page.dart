@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../core/format.dart';
 import '../data/game_data.dart';
-import '../models/server.dart';
 import '../platform/native_bridge.dart';
 import '../state/app_state.dart';
 import '../theme/app_theme.dart';
@@ -21,27 +21,23 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   final _bridge = NativeBridge();
   bool _loaded = false;
-  bool _installed = false;
   bool _storage = false;
   DataStatus? _status;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (!_loaded) {
-      _loaded = true;
-      _refresh();
-    }
+    if (_loaded) return;
+    _loaded = true;
+    _refresh();
   }
 
   Future<void> _refresh() async {
     final state = AppScope.of(context);
-    final installed = await _bridge.isInstalled(state.config.clientPackage);
     final storage = await _bridge.hasStorageAccess();
     final status = await state.gameData.status();
     if (!mounted) return;
     setState(() {
-      _installed = installed;
       _storage = storage;
       _status = status;
     });
@@ -52,245 +48,168 @@ class _HomePageState extends State<HomePage> {
     await Future.wait([state.refreshServers(force: true), _refresh()]);
   }
 
+  Future<void> _play() async {
+    final state = AppScope.of(context);
+    if (!(_status?.ready ?? false)) {
+      await state.updateConfig(state.config.copyWith(onboardingDone: false));
+      return;
+    }
+    final server = state.quickServer;
+    if (server == null) {
+      widget.onOpenServers();
+      return;
+    }
+    if (mounted) await NicknameSheet.show(context, server);
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = AppScope.of(context);
     final quick = state.quickServer;
     final top = state.topServers.take(3).toList();
+    final ready = _status?.ready ?? false;
     return Scaffold(
-      body: ContourBackdrop(
-        child: SafeArea(
-          child: RefreshIndicator(
-            color: Palette.signal,
-            backgroundColor: Palette.surface,
-            onRefresh: _reloadAll,
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(20, 18, 20, 28),
-              children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Expanded(child: SampMark()),
-                    IconButton(
-                      onPressed: _reloadAll,
-                      icon: const Icon(Icons.refresh, color: Palette.muted),
-                      tooltip: 'Muat ulang',
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 22),
-                _Hero(
-                  installed: _installed,
-                  storage: _storage,
-                  dataReady: _status?.ready ?? false,
-                  quick: quick,
-                  onPlay: () {
-                    if (quick == null) {
-                      widget.onOpenServers();
-                    } else {
-                      NicknameSheet.show(context, quick);
-                    }
-                  },
-                ),
-                const SizedBox(height: 24),
-                SectionLabel(
-                  'Server ramai',
-                  trailing: TextButton(
-                    onPressed: widget.onOpenServers,
-                    child: const Text('LIHAT SEMUA'),
+      body: SafeArea(
+        child: RefreshIndicator(
+          color: Palette.signal,
+          backgroundColor: Palette.surface,
+          onRefresh: _reloadAll,
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(22, 20, 22, 28),
+            children: [
+              Row(
+                children: [
+                  const SampMark(size: 30, caption: 'SA-MP'),
+                  const Spacer(),
+                  IconButton(
+                    onPressed: _reloadAll,
+                    icon: const Icon(Icons.refresh, color: Palette.muted),
+                    tooltip: 'Muat ulang',
                   ),
-                ),
-                if (top.isEmpty)
-                  Panel(
-                    child: Text(
-                      state.serversLoading
-                          ? 'Memuat server Indonesia...'
-                          : (state.serversError ??
-                                'Belum ada server. Tambah manual di tab Server.'),
-                      style: const TextStyle(
-                        fontFamily: AppTheme.body,
-                        color: Palette.muted,
-                      ),
-                    ),
-                  )
-                else
-                  ...top.asMap().entries.map(
-                    (e) => ServerCard(
-                      server: e.value,
-                      index: e.key + 1,
-                      favorite: state.favorites.contains(e.value.address),
-                      onTap: () => NicknameSheet.show(context, e.value),
-                      onToggleFavorite: () =>
-                          state.toggleFavorite(e.value.address),
-                    ),
-                  ),
-                const SizedBox(height: 14),
+                ],
+              ),
+              const SizedBox(height: 38),
+              if (!ready) ...[
                 const Text(
-                  'Data server: SA:MP Indonesia · sa-mp.co.id',
+                  'Data game belum siap.',
                   style: TextStyle(
+                    fontFamily: AppTheme.display,
+                    fontSize: 38,
+                    fontWeight: FontWeight.w700,
+                    height: 0.98,
+                    color: Palette.ink,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  _storage
+                      ? 'Pilih Lite atau Original untuk mulai.'
+                      : 'Beri akses folder GTA untuk mulai.',
+                  style: const TextStyle(
                     fontFamily: AppTheme.body,
-                    fontSize: 10.5,
+                    fontSize: 14,
                     color: Palette.muted,
                   ),
                 ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _Hero extends StatelessWidget {
-  final bool installed;
-  final bool storage;
-  final bool dataReady;
-  final Server? quick;
-  final VoidCallback onPlay;
-
-  const _Hero({
-    required this.installed,
-    required this.storage,
-    required this.dataReady,
-    required this.quick,
-    required this.onPlay,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final ready = installed && storage && dataReady;
-    return Container(
-      decoration: BoxDecoration(
-        color: Palette.surface,
-        border: Border.all(color: Palette.line),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: double.infinity,
-            color: ready ? Palette.accent : Palette.surfaceHi,
-            padding: const EdgeInsets.fromLTRB(14, 8, 14, 8),
-            child: Row(
-              children: [
+              ] else ...[
                 Text(
-                  ready ? 'JALUR SIAP' : 'PERSIAPAN',
-                  style: TextStyle(
-                    fontFamily: AppTheme.body,
-                    fontSize: 10.5,
+                  quick?.name.isNotEmpty == true ? quick!.name : 'Siap main.',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontFamily: AppTheme.display,
+                    fontSize: 42,
                     fontWeight: FontWeight.w700,
-                    letterSpacing: 1.6,
-                    color: ready ? Palette.accentInk : Palette.muted,
+                    height: 0.96,
+                    letterSpacing: -0.4,
+                    color: Palette.ink,
                   ),
                 ),
-                const Spacer(),
-                Text(
-                  ready ? 'IGNITION ON' : 'CHECK ROUTE',
-                  style: TextStyle(
-                    fontFamily: AppTheme.body,
-                    fontSize: 9.5,
-                    letterSpacing: 1.2,
-                    color: ready
-                        ? Palette.accentInk.withValues(alpha: 0.75)
-                        : Palette.muted,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
                 if (quick != null) ...[
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: Text(
-                          quick!.name.isEmpty ? quick!.address : quick!.name,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontFamily: AppTheme.display,
-                            fontSize: 34,
-                            fontWeight: FontWeight.w700,
-                            height: 0.98,
-                            color: Palette.ink,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      RouteShield(
-                        value: '${quick!.players}',
-                        caption: 'ONLINE',
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 10),
                   Text(
-                    '${quick!.address} · ${quick!.players}/${quick!.maxPlayers}'
-                    '${quick!.gamemode.isEmpty ? '' : ' · ${quick!.gamemode}'}',
+                    '${quick.address} · ${quick.players}/${quick.maxPlayers}'
+                    '${quick.gamemode.isEmpty ? '' : ' · ${quick.gamemode}'}',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                       fontFamily: AppTheme.body,
-                      fontSize: 11.5,
+                      fontSize: 12.5,
                       color: Palette.muted,
                     ),
                   ),
-                ] else
-                  const Text(
-                    'Tentukan server tujuan',
-                    style: TextStyle(
-                      fontFamily: AppTheme.display,
-                      fontSize: 32,
-                      height: 1,
-                      color: Palette.ink,
+                ],
+              ],
+              const SizedBox(height: 24),
+              if (ready)
+                StatusDot(
+                  ok: true,
+                  label:
+                      'Data siap · ${formatBytes(_status!.bytes)} · ${_status!.files} file',
+                )
+              else
+                StatusDot(
+                  ok: _storage,
+                  label: _storage ? 'Akses folder aktif' : 'Akses folder belum',
+                ),
+              const SizedBox(height: 22),
+              FilledButton.icon(
+                onPressed: _play,
+                icon: Icon(
+                  ready ? Icons.play_arrow_rounded : Icons.download_rounded,
+                  size: 22,
+                ),
+                label: Text(
+                  ready
+                      ? (quick == null ? 'Pilih server' : 'Main')
+                      : 'Siapkan data',
+                ),
+              ),
+              const SizedBox(height: 38),
+              SectionLabel(
+                'Server ramai',
+                trailing: TextButton(
+                  onPressed: widget.onOpenServers,
+                  child: const Text('Semua'),
+                ),
+              ),
+              if (top.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 20),
+                  child: Text(
+                    state.serversLoading
+                        ? 'Memuat server...'
+                        : (state.serversError ??
+                              'Belum ada server. Tambah manual di tab Server.'),
+                    style: const TextStyle(
+                      fontFamily: AppTheme.body,
+                      fontSize: 13,
+                      color: Palette.muted,
                     ),
                   ),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    Expanded(
-                      child: StatusDot(
-                        ok: installed,
-                        label: installed ? 'klien siap' : 'klien belum',
-                      ),
-                    ),
-                    Expanded(
-                      child: StatusDot(
-                        ok: dataReady,
-                        label: dataReady ? 'data siap' : 'data belum',
-                      ),
-                    ),
-                    StatusDot(
-                      ok: storage,
-                      label: storage ? 'folder' : 'izin folder',
-                    ),
-                  ],
+                )
+              else
+                ...top.map(
+                  (server) => ServerCard(
+                    server: server,
+                    favorite: state.favorites.contains(server.address),
+                    onTap: () => NicknameSheet.show(context, server),
+                    onToggleFavorite: () =>
+                        state.toggleFavorite(server.address),
+                  ),
                 ),
-              ],
-            ),
-          ),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-            decoration: const BoxDecoration(
-              border: Border(top: BorderSide(color: Palette.line)),
-            ),
-            child: FilledButton.icon(
-              onPressed: onPlay,
-              icon: Icon(
-                quick == null ? Icons.alt_route : Icons.play_arrow_rounded,
-                size: 21,
+              const SizedBox(height: 12),
+              const Text(
+                'Data server: sa-mp.co.id',
+                style: TextStyle(
+                  fontFamily: AppTheme.body,
+                  fontSize: 10.5,
+                  color: Palette.muted,
+                ),
               ),
-              label: Text(quick == null ? 'PILIH SERVER' : 'MASUK SERVER'),
-            ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }

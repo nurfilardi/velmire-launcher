@@ -17,7 +17,7 @@ class ServersPage extends StatefulWidget {
 
 class _ServersPageState extends State<ServersPage> {
   final _search = TextEditingController();
-  String _filter = 'SEMUA';
+  String _filter = 'Semua';
 
   @override
   void dispose() {
@@ -25,14 +25,21 @@ class _ServersPageState extends State<ServersPage> {
     super.dispose();
   }
 
-  bool _matches(Server s, String query) {
-    if (_filter == 'FAVORIT' && !_favoriteSet.contains(s.address)) return false;
-    if (_filter == 'MANUAL' && !s.manual) return false;
-    if (_filter != 'SEMUA' && _filter != 'FAVORIT' && _filter != 'MANUAL') {
-      if (versionFamily(s.version) != _filter) return false;
+  bool _matches(Server server, String query) {
+    if (_filter == 'Favorit' && !_favoriteSet.contains(server.address)) {
+      return false;
+    }
+    if (_filter == 'Manual' && !server.manual) return false;
+    if (_filter != 'Semua' &&
+        _filter != 'Favorit' &&
+        _filter != 'Manual' &&
+        versionFamily(server.version) != _filter.toUpperCase()) {
+      return false;
     }
     if (query.isEmpty) return true;
-    final haystack = '${s.name} ${s.host} ${s.gamemode} ${s.language}'.toLowerCase();
+    final haystack =
+        '${server.name} ${server.host} ${server.gamemode} ${server.language}'
+            .toLowerCase();
     return haystack.contains(query);
   }
 
@@ -44,9 +51,9 @@ class _ServersPageState extends State<ServersPage> {
     if (server == null || !mounted) return;
     await state.addManual(server);
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('${server.name} ditambahkan')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('${server.name} ditambahkan')));
   }
 
   Future<void> _removeManual(Server server) async {
@@ -58,8 +65,14 @@ class _ServersPageState extends State<ServersPage> {
         title: const Text('Hapus server?'),
         content: Text('${server.name}\n${server.address}'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('BATAL')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('HAPUS')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Batal'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Hapus'),
+          ),
         ],
       ),
     );
@@ -79,17 +92,17 @@ class _ServersPageState extends State<ServersPage> {
         child: Column(
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+              padding: const EdgeInsets.fromLTRB(22, 20, 22, 0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
                     children: [
                       const Text(
-                        'SERVER',
+                        'Server',
                         style: TextStyle(
                           fontFamily: AppTheme.display,
-                          fontSize: 38,
+                          fontSize: 34,
                           fontWeight: FontWeight.w700,
                           height: 1,
                           color: Palette.ink,
@@ -102,19 +115,25 @@ class _ServersPageState extends State<ServersPage> {
                             ? const SizedBox(
                                 width: 18,
                                 height: 18,
-                                child: CircularProgressIndicator(strokeWidth: 2),
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
                               )
                             : const Icon(Icons.refresh, color: Palette.muted),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 14),
                   TextField(
                     controller: _search,
                     onChanged: (_) => setState(() {}),
                     decoration: InputDecoration(
-                      hintText: 'Cari nama, gamemode, IP...',
-                      prefixIcon: const Icon(Icons.search, size: 20, color: Palette.muted),
+                      hintText: 'Cari server',
+                      prefixIcon: const Icon(
+                        Icons.search,
+                        size: 20,
+                        color: Palette.muted,
+                      ),
                       suffixIcon: query.isEmpty
                           ? null
                           : IconButton(
@@ -123,14 +142,21 @@ class _ServersPageState extends State<ServersPage> {
                             ),
                     ),
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 10),
                   SizedBox(
-                    height: 30,
+                    height: 34,
                     child: ListView(
                       scrollDirection: Axis.horizontal,
                       children: [
-                        for (final f in const ['SEMUA', 'FAVORIT', '0.3.7', '0.3.DL', 'OPENMP', 'MANUAL'])
-                          _FilterPill(
+                        for (final f in const [
+                          'Semua',
+                          'Favorit',
+                          '0.3.7',
+                          '0.3.DL',
+                          'OpenMP',
+                          'Manual',
+                        ])
+                          _FilterTab(
                             label: f,
                             selected: _filter == f,
                             onTap: () => setState(() => _filter = f),
@@ -138,60 +164,63 @@ class _ServersPageState extends State<ServersPage> {
                       ],
                     ),
                   ),
-                  const SizedBox(height: 12),
                 ],
               ),
             ),
             if (state.serversError != null)
               Padding(
-                padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-                child: Panel(
-                  color: Palette.surface,
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                  child: Row(
-                    children: [
-                      const Expanded(
-                        child: Text(
-                          'Gagal memuat, menampilkan cache terakhir.',
-                          style: TextStyle(fontFamily: AppTheme.body, fontSize: 12, color: Palette.muted),
+                padding: const EdgeInsets.fromLTRB(22, 8, 22, 4),
+                child: Row(
+                  children: [
+                    const Expanded(
+                      child: Text(
+                        'Gagal memuat. Menampilkan data terakhir.',
+                        style: TextStyle(
+                          fontFamily: AppTheme.body,
+                          fontSize: 12,
+                          color: Palette.muted,
                         ),
                       ),
-                      TextButton(
-                        onPressed: () => state.refreshServers(force: true),
-                        child: const Text('COBA LAGI'),
-                      ),
-                    ],
-                  ),
+                    ),
+                    TextButton(
+                      onPressed: () => state.refreshServers(force: true),
+                      child: const Text('Coba lagi'),
+                    ),
+                  ],
                 ),
               ),
             Expanded(
               child: RefreshIndicator(
-                color: Palette.accent,
+                color: Palette.signal,
                 backgroundColor: Palette.surface,
                 onRefresh: () => state.refreshServers(force: true),
                 child: list.isEmpty
                     ? ListView(
                         children: [
                           EmptyState(
-                            title: state.serversLoading ? 'MEMUAT...' : 'TIDAK ADA SERVER',
+                            title: state.serversLoading
+                                ? 'Memuat server...'
+                                : 'Tidak ada server',
                             message: state.serversLoading
                                 ? 'Mengambil daftar server Indonesia.'
-                                : 'Coba ubah filter atau tambah server manual lewat tombol di bawah.',
+                                : 'Ubah filter atau tambah server manual.',
                           ),
                         ],
                       )
                     : ListView.builder(
-                        padding: const EdgeInsets.fromLTRB(20, 0, 20, 100),
+                        padding: const EdgeInsets.fromLTRB(22, 4, 22, 100),
                         itemCount: list.length,
                         itemBuilder: (_, i) {
                           final server = list[i];
                           return ServerCard(
                             server: server,
-                            index: i + 1,
                             favorite: state.favorites.contains(server.address),
                             onTap: () => NicknameSheet.show(context, server),
-                            onToggleFavorite: () => state.toggleFavorite(server.address),
-                            onLongPress: server.manual ? () => _removeManual(server) : null,
+                            onToggleFavorite: () =>
+                                state.toggleFavorite(server.address),
+                            onLongPress: server.manual
+                                ? () => _removeManual(server)
+                                : null,
                           );
                         },
                       ),
@@ -206,44 +235,50 @@ class _ServersPageState extends State<ServersPage> {
         foregroundColor: Palette.accentInk,
         icon: const Icon(Icons.add),
         label: const Text(
-          'SERVER',
-          style: TextStyle(fontFamily: AppTheme.body, fontWeight: FontWeight.w700, letterSpacing: 1),
+          'Tambah',
+          style: TextStyle(
+            fontFamily: AppTheme.body,
+            fontWeight: FontWeight.w600,
+          ),
         ),
       ),
     );
   }
 }
 
-class _FilterPill extends StatelessWidget {
+class _FilterTab extends StatelessWidget {
   final String label;
   final bool selected;
   final VoidCallback onTap;
 
-  const _FilterPill({required this.label, required this.selected, required this.onTap});
+  const _FilterTab({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(right: 8),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(4),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-          decoration: BoxDecoration(
-            color: selected ? Palette.accent : Colors.transparent,
-            borderRadius: BorderRadius.circular(4),
-            border: Border.all(color: selected ? Palette.accent : Palette.line),
-          ),
-          child: Text(
-            label,
-            style: TextStyle(
-              fontFamily: AppTheme.body,
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              letterSpacing: 1,
-              color: selected ? Palette.accentInk : Palette.muted,
+    return InkWell(
+      onTap: onTap,
+      child: Container(
+        margin: const EdgeInsets.only(right: 18),
+        padding: const EdgeInsets.only(bottom: 8),
+        decoration: BoxDecoration(
+          border: Border(
+            bottom: BorderSide(
+              color: selected ? Palette.signal : Colors.transparent,
+              width: 2,
             ),
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontFamily: AppTheme.body,
+            fontSize: 12.5,
+            fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+            color: selected ? Palette.ink : Palette.muted,
           ),
         ),
       ),
