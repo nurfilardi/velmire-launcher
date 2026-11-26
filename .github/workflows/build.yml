@@ -40,9 +40,6 @@ jobs:
           curl -fsSL -o assets/fonts/BarlowCondensed-SemiBold.ttf $base/ofl/barlowcondensed/BarlowCondensed-SemiBold.ttf
           curl -fsSL -o assets/fonts/BarlowCondensed-Bold.ttf $base/ofl/barlowcondensed/BarlowCondensed-Bold.ttf
 
-      - name: Decode launcher icons
-        run: bash tool/decode_icons.sh
-
       - name: Ensure gradle wrapper
         run: |
           base=https://raw.githubusercontent.com/gradle/gradle/v8.12.0
