@@ -4,6 +4,8 @@ import 'package:http/http.dart' as http;
 
 final _sha256 = RegExp(r'^[0-9a-fA-F]{64}$');
 
+enum DataEdition { lite, original }
+
 class ResourceSource {
   final String name;
   final String url;
@@ -119,6 +121,18 @@ class ResourceManifest {
     'sources': sources.map((s) => s.toJson()).toList(),
     if (client != null) 'client': client!.toJson(),
   };
+
+  ResourceSource? sourceFor(DataEdition edition) {
+    final keys = switch (edition) {
+      DataEdition.lite => const ['lite'],
+      DataEdition.original => const ['original', 'full', 'ori'],
+    };
+    for (final source in sources) {
+      final name = source.name.toLowerCase();
+      if (keys.any(name.contains)) return source;
+    }
+    return null;
+  }
 
   static Future<ResourceManifest> fetch(
     http.Client client,

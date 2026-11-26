@@ -30,7 +30,7 @@ class AppState extends ChangeNotifier {
   DateTime? serversUpdatedAt;
 
   AppState({required this.store, ServerRepository? repository})
-      : repository = repository ?? ServerRepository(http.Client());
+    : repository = repository ?? ServerRepository(http.Client());
 
   void bootstrap() {
     config = store.readConfig();
@@ -92,10 +92,7 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> addManual(Server server) async {
-    manual = [
-      server,
-      ...manual.where((s) => s.address != server.address),
-    ];
+    manual = [server, ...manual.where((s) => s.address != server.address)];
     await store.saveManualServers(manual);
     notifyListeners();
   }
@@ -148,7 +145,7 @@ class AppState extends ChangeNotifier {
 
 class AppScope extends InheritedNotifier<AppState> {
   const AppScope({super.key, required AppState state, required super.child})
-      : super(notifier: state);
+    : super(notifier: state);
 
   static AppState of(BuildContext context) {
     final scope = context.dependOnInheritedWidgetOfExactType<AppScope>();

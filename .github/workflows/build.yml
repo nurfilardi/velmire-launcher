@@ -70,7 +70,8 @@ jobs:
       - name: Build APK
         run: |
           set -o pipefail
-          flutter build apk --release --target-platform android-arm64 2>&1 | tee build.log
+          flutter build apk --release --target-platform android-arm64 \
+            --dart-define=PROVIDER_MANIFEST="${{ vars.PROVIDER_MANIFEST }}" 2>&1 | tee build.log
 
       - name: Publish build log
         if: failure()

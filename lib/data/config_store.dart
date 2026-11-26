@@ -4,6 +4,13 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/server.dart';
 
+const builtInManifestUrl = String.fromEnvironment('PROVIDER_MANIFEST');
+
+String _manifestUrl(Object? raw) {
+  final value = raw?.toString().trim() ?? '';
+  return value.isEmpty ? builtInManifestUrl : value;
+}
+
 class AppConfig {
   final String clientPackage;
   final String clientActivity;
@@ -21,7 +28,7 @@ class AppConfig {
     this.liteUrl = '',
     this.fullUrl = '',
     this.nick = '',
-    this.manifestUrl = '',
+    this.manifestUrl = builtInManifestUrl,
     this.onboardingDone = false,
   });
 
@@ -63,7 +70,7 @@ class AppConfig {
     liteUrl: j['liteUrl'] ?? '',
     fullUrl: j['fullUrl'] ?? '',
     nick: j['nick'] ?? '',
-    manifestUrl: j['manifestUrl'] ?? '',
+    manifestUrl: _manifestUrl(j['manifestUrl']),
     onboardingDone: j['onboardingDone'] == true,
   );
 }
