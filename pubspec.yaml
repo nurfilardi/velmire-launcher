@@ -1,7 +1,7 @@
 name: samp_launcher
 description: SA-MP mobile launcher for Android.
 publish_to: 'none'
-version: 0.1.0+2005
+version: 0.1.0+2006
 
 environment:
   sdk: ^3.9.0
